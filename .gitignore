@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+
+# ROS2 build files
+install/
+log/
+
+# Model checkpoints (too large)
+checkpoints/
+
+# Compiled files
+*.so
+*.o
+
+# Temporary files
+*.tmp
+*.bak
