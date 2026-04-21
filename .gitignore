@@ -20,3 +20,6 @@ checkpoints/
 # Temporary files
 *.tmp
 *.bak
+go1_nav/debug_astar.py
+go1_nav/test_astar.py
+test/

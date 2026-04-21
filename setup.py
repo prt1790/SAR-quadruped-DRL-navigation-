@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'go1_nav'
+package_name = 'go2_nav'
 
 setup(
     name=package_name,
@@ -20,7 +20,7 @@ setup(
     extras_require={'test': ['pytest']},
     entry_points={
         'console_scripts': [
-            'champ_gz_bridge = go1_nav.champ_gz_bridge:main',
+            'champ_gz_bridge = go2_nav.champ_gz_bridge:main',
         ],
     },
 )

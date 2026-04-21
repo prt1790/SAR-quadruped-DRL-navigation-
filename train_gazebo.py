@@ -6,7 +6,7 @@ Usage: python3 train_gazebo.py
 Requires: Gazebo running with unitree_go2_launch.py + champ_gz_bridge.py
 """
 import sys
-sys.path.insert(0, "/home/pirat/ros2_ws/src/go1_nav")
+sys.path.insert(0, "/home/pirat/ros2_ws/src/go2_nav")
 
 import numpy as np
 import torch
@@ -19,19 +19,17 @@ from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 from sb3_contrib import TRPO
-from go1_nav.go2_nav_env import Go2NavEnv
+from go2_nav.go2_nav_env import Go2NavEnv
 
-# ── Configuration ────────────────────────────────────────────────────────────
 
-# Robot spawns at (-8, -8). Goal should be near the collapsed house entrance.
-GOAL_POS        = None  # randomised each episode   # adjust based on your world layout
-TRAIN_STEPS     = 50_000       # reduce for quick test; use 200_000 for thesis
+
+GOAL_POS        = None  # randomised each episode   
+TRAIN_STEPS     = 200_000      
 EVAL_FREQ       = 10_000
 EVAL_EPISODES   = 2
 MAX_EP_STEPS    = 25
 
-# ── Environment factory ──────────────────────────────────────────────────────
-
+# creates the Gazebo environment 
 def make_env():
     env = Go2NavEnv(
         goal_pos=GOAL_POS,
@@ -46,8 +44,7 @@ def make_env():
     )
     return Monitor(env)
 
-# ── Baseline agents ──────────────────────────────────────────────────────────
-
+# baseline agent
 class RandomWalker:
     def __init__(self, action_space):
         self.action_space = action_space
@@ -56,15 +53,15 @@ class RandomWalker:
     def reset(self):
         pass
 
-# ── Episode runner ───────────────────────────────────────────────────────────
-
+# runs one episode
 def run_episode(agent, env, max_steps=MAX_EP_STEPS):
-    obs, _ = env.reset()
+    obs, _ = env.reset() # resets the environment 
     total_reward = 0.0
     steps = 0
     collision = False
     success = False
 
+    # loops actions until end of episode
     for _ in range(max_steps):
         if hasattr(agent, "predict"):
             action, _ = agent.predict(obs, deterministic=True)
@@ -84,8 +81,7 @@ def run_episode(agent, env, max_steps=MAX_EP_STEPS):
 
     return total_reward, steps, collision, success
 
-# ── Training loop ────────────────────────────────────────────────────────────
-
+# main training loop 
 def train_and_eval(agents, env):
     import os
     os.makedirs("checkpoints", exist_ok=True)
@@ -94,9 +90,11 @@ def train_and_eval(agents, env):
     curves  = {}
     rl_names = {"DDPG", "TD3", "SAC", "PPO", "TRPO"}
 
+   
     for name, agent in agents.items():
         print(f"\n{'='*50}\nAgent: {name}\n{'='*50}")
-
+        
+         # for each RL agent, trains for eval_freq steps & saves a checkpoint
         if name in rl_names:
             curve_r, curve_s = [], []
             n_evals = TRAIN_STEPS // EVAL_FREQ
@@ -105,15 +103,15 @@ def train_and_eval(agents, env):
                 agent.learn(total_timesteps=EVAL_FREQ, reset_num_timesteps=(i==0))
                 # Save checkpoint
                 save_path = f"checkpoints/{name}_step{(i+1)*EVAL_FREQ}"
-                agent.save(save_path)
+                agent.save(save_path) # checkpoint 
                 ep_rewards = []
                 for _ in range(EVAL_EPISODES):
                     r, _, _, _ = run_episode(agent, env)
                     ep_rewards.append(r)
                 avg = float(np.mean(ep_rewards))
                 curve_r.append(avg)
-                curve_s.append((i + 1) * EVAL_FREQ)
-                print(f"  [{name}] step {(i+1)*EVAL_FREQ}/{TRAIN_STEPS}  avg_reward={avg:.2f}")
+                curve_s.append((i + 1) * EVAL_FREQ) 
+                print(f"  [{name}] step {(i+1)*EVAL_FREQ}/{TRAIN_STEPS}  avg_reward={avg:.2f}") 
 
             curves[name] = {"steps": curve_s, "rewards": curve_r}
 
@@ -133,7 +131,6 @@ def train_and_eval(agents, env):
 
     return results, curves
 
-# ── Plotting ─────────────────────────────────────────────────────────────────
 
 PALETTE = {
     "Random": "#9E9E9E", "DDPG": "#2196F3", "TD3": "#03A9F4",
@@ -142,9 +139,10 @@ PALETTE = {
 
 def plot_results(results, curves):
     sns.set_theme(style="whitegrid", context="paper", font_scale=1.2)
+    plt.rcParams.update({"axes.spines.top": False, "axes.spines.right": False, "figure.dpi": 150})
     agent_names = list(results.keys())
 
-    # Learning curves
+    # Plot 1: Learning curves
     if curves:
         fig, ax = plt.subplots(figsize=(7, 4))
         for name, c in curves.items():
@@ -156,23 +154,46 @@ def plot_results(results, curves):
         ax.set_ylabel("Mean evaluation return")
         ax.set_title("Learning curves — Gazebo SAR environment")
         ax.legend(frameon=False)
+        ax.ticklabel_format(axis="x", style="sci", scilimits=(4, 4))
         fig.tight_layout()
-        plt.savefig("gazebo_learning_curves.pdf", bbox_inches="tight")
+        plt.savefig("fig1_learning_curves.pdf", bbox_inches="tight")
         plt.show()
 
-    # Final return boxplot
+    # Plot 2: Final return boxplot with individual data points
     reward_df = pd.DataFrame({n: pd.Series(results[n]["rewards"]) for n in agent_names}
                              ).melt(var_name="Agent", value_name="Return")
     fig, ax = plt.subplots(figsize=(8, 4))
     sns.boxplot(data=reward_df, x="Agent", y="Return", order=agent_names,
                 palette={n: PALETTE.get(n, "#607D8B") for n in agent_names},
-                width=0.5, ax=ax)
-    ax.set_title("Final evaluation return — Gazebo SAR")
+                width=0.5, linewidth=1.2,
+                flierprops=dict(marker="x", markersize=4, linewidth=0.8), ax=ax)
+    sns.stripplot(data=reward_df, x="Agent", y="Return",
+                  palette={n: PALETTE.get(n, "#607D8B") for n in agent_names},
+                  order=agent_names, dodge=False, jitter=True, size=3, alpha=0.5, ax=ax)
+    ax.set_title("Final evaluation return distribution — Gazebo SAR")
+    ax.set_xlabel("")
+    ax.set_ylabel("Cumulative return")
+    ax.tick_params(axis="x", rotation=15)
     fig.tight_layout()
-    plt.savefig("gazebo_final_return.pdf", bbox_inches="tight")
+    plt.savefig("fig2_final_return_boxplot.pdf", bbox_inches="tight")
     plt.show()
 
-    # Success/collision rates
+    # Plot 3: Steps per episode violin plot
+    steps_df = pd.DataFrame({n: pd.Series(results[n]["steps"]) for n in agent_names}
+                            ).melt(var_name="Agent", value_name="Steps")
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.violinplot(data=steps_df, x="Agent", y="Steps", order=agent_names,
+                   palette={n: PALETTE.get(n, "#607D8B") for n in agent_names},
+                   inner="quartile", linewidth=1.0, cut=0, ax=ax)
+    ax.set_title("Steps per episode — Gazebo SAR")
+    ax.set_xlabel("")
+    ax.set_ylabel("Steps to termination")
+    ax.tick_params(axis="x", rotation=15)
+    fig.tight_layout()
+    plt.savefig("fig3_steps_violin.pdf", bbox_inches="tight")
+    plt.show()
+
+    # Plot 4: Success/collision rates
     rate_df = pd.DataFrame({
         "Agent": agent_names,
         "Success rate":   [np.mean(results[n]["successes"])   for n in agent_names],
@@ -180,14 +201,39 @@ def plot_results(results, curves):
     }).melt(id_vars="Agent", var_name="Metric", value_name="Rate")
     fig, ax = plt.subplots(figsize=(8, 4))
     sns.barplot(data=rate_df, x="Agent", y="Rate", hue="Metric", order=agent_names,
-                palette={"Success rate": "#43A047", "Collision rate": "#E53935"}, ax=ax)
+                palette={"Success rate": "#43A047", "Collision rate": "#E53935"},
+                linewidth=0.8, edgecolor="white", ax=ax)
     ax.set_ylim(0, 1.05)
     ax.set_title("Success and collision rates — Gazebo SAR")
+    ax.legend(frameon=False, loc="upper right")
+    ax.tick_params(axis="x", rotation=15)
     fig.tight_layout()
-    plt.savefig("gazebo_rates.pdf", bbox_inches="tight")
+    plt.savefig("fig4_success_collision_rates.pdf", bbox_inches="tight")
     plt.show()
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+    # Plot 5: DDPG vs TD3 vs SAC zoomed comparison (first 20k steps)
+    MAX_STEPS = 20_000
+    detail_agents = [n for n in ["DDPG", "TD3", "SAC"] if n in curves]
+    if detail_agents:
+        fig, ax = plt.subplots(figsize=(7, 4))
+        for name in detail_agents:
+            xs = np.array(curves[name]["steps"])
+            ys = np.array(curves[name]["rewards"])
+            mask = xs <= MAX_STEPS
+            xs, ys = xs[mask], ys[mask]
+            color = PALETTE.get(name, "#607D8B")
+            ax.plot(xs, ys, label=name, color=color, linewidth=2, marker="o", markersize=4)
+            ax.fill_between(xs, ys*0.95, ys*1.05, color=color, alpha=0.15)
+        ax.set_xlabel("Environment steps")
+        ax.set_ylabel("Mean evaluation return")
+        ax.set_title("DDPG vs TD3 vs SAC — first 2×10⁴ steps — Gazebo SAR")
+        ax.set_xlim(0, MAX_STEPS)
+        ax.xaxis.set_major_formatter(
+            plt.FuncFormatter(lambda x, _: f"{int(x/1000)}k" if x > 0 else "0"))
+        ax.legend(frameon=False)
+        fig.tight_layout()
+        plt.savefig("fig5_ddpg_td3_sac_2e4.pdf", bbox_inches="tight")
+        plt.show()
 
 if __name__ == "__main__":
     print("Initialising environment...")
