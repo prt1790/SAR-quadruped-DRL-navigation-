@@ -27,7 +27,7 @@ GOAL_POS        = None  # randomised each episode
 TRAIN_STEPS     = 200_000      
 EVAL_FREQ       = 10_000
 EVAL_EPISODES   = 2
-MAX_EP_STEPS    = 25
+MAX_EP_STEPS    = 100
 
 # creates the Gazebo environment 
 def make_env():
